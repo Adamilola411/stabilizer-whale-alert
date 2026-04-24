@@ -1,0 +1,12 @@
+{
+  "name": "stabilizer-whale-alert",
+  "version": "1.0.0",
+  "description": "24/7 Whale Alert monitor for Stabilizer Fi Sepolia Testnet",
+  "main": "stabilizer-monitor.js",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "ethers": "^5.7.2"
+  },
+  "author": "arowon",
+  "license": "MIT"
+}
