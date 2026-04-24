@@ -1,12 +1,12 @@
 const { ethers } = require("ethers");
 const axios = require("axios");
 
-// 1. Configuration
+// 1. Setup
 const ROUTER_ADDRESS = "0xb476a6a53Ba32c4B74BbdACaD567EBe1B3D50f09";
 const RPC_URL = process.env.RPC_URL;
 const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
 
-// SET THIS TO 0 TO TEST. Change back to 5000 once you confirm it works!
+// SET TO 0 TO CAPTURE EVERYTHING FOR TESTING
 const WHALE_THRESHOLD = 0; 
 
 const TOKENS = {
@@ -17,28 +17,31 @@ const TOKENS = {
 };
 
 async function monitor() {
-    console.log("🛰️ Stabilizer Sentinel: Starting Scan...");
+    console.log("🛰️ Initializing Stabilizer Sentinel...");
     const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
     
     try {
+        // --- STEP 1: Verify Webhook (One-time test) ---
+        // Uncomment the line below to test if your Discord Webhook actually works
+        // await axios.post(DISCORD_WEBHOOK, { content: "📡 Sentinel is scanning Sepolia..." });
+
         const latestBlock = await provider.getBlockNumber();
-        const startBlock = latestBlock - 40; // Scan last ~8 minutes to be safe
+        const startBlock = latestBlock - 50; // Scan last ~10 mins
 
         const filter = {
             address: ROUTER_ADDRESS,
             fromBlock: startBlock,
             toBlock: latestBlock,
-            // Topic for Swap event
-            topics: [ethers.utils.id("Swap(address,address,address,uint256,uint256)")]
+            // Topic for Swap(address,address,address,uint256,uint256)
+            topics: ["0xcd3829a237b301712a32155b1115166060606060606060606060606060606060"] 
         };
 
-        const logs = await provider.getLogs(filter);
-        console.log(`🔎 Scanned ${startBlock} to ${latestBlock}. Found ${logs.length} swaps.`);
+        // Note: Using a hardcoded topic hash if the id() function is failing
+        const swapTopic = ethers.utils.id("Swap(address,address,address,uint256,uint256)");
+        filter.topics = [swapTopic];
 
-        if (logs.length === 0) {
-            console.log("😴 No activity detected in this window.");
-            return;
-        }
+        const logs = await provider.getLogs(filter);
+        console.log(`🔎 Blocks ${startBlock} to ${latestBlock} | Found: ${logs.length} swaps.`);
 
         const iface = new ethers.utils.Interface([
             "event Swap(address indexed user, address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut)"
@@ -46,30 +49,28 @@ async function monitor() {
 
         for (const log of logs) {
             const parsed = iface.parseLog(log);
-            // Standardize decimal handling (adjust if some tokens use 6 decimals)
             const amount = parseFloat(ethers.utils.formatUnits(parsed.args.amountIn, 18));
 
             if (amount >= WHALE_THRESHOLD) {
-                const tokenIn = TOKENS[parsed.args.tokenIn.toLowerCase()] || "Unknown";
-                const tokenOut = TOKENS[parsed.args.tokenOut.toLowerCase()] || "Unknown";
+                const tokenIn = TOKENS[parsed.args.tokenIn.toLowerCase()] || "Unknown Token";
+                const tokenOut = TOKENS[parsed.args.tokenOut.toLowerCase()] || "Unknown Token";
 
                 await axios.post(DISCORD_WEBHOOK, {
                     embeds: [{
-                        title: "🐋 STABILIZER ACTIVITY ALERT",
+                        title: "🐋 STABILIZER ACTIVITY DETECTED",
                         color: 0x00ffcc,
-                        description: `**${amount.toLocaleString()} ${tokenIn}** swapped for **${tokenOut}**`,
+                        description: `**${amount.toLocaleString()} ${tokenIn}** ➔ **${tokenOut}**`,
                         fields: [
-                            { name: "Slippage", value: "0% (Stabilizer Engine)", inline: true },
-                            { name: "Tx Link", value: `[View on Etherscan](https://sepolia.etherscan.io/tx/${log.transactionHash})`, inline: true }
+                            { name: "Tx Link", value: `[Etherscan](https://sepolia.etherscan.io/tx/${log.transactionHash})` }
                         ],
+                        footer: { text: `Block: ${log.blockNumber}` },
                         timestamp: new Date()
                     }]
                 });
-                console.log(`✅ Notification sent for TX: ${log.transactionHash.slice(0,10)}`);
             }
         }
     } catch (error) {
-        console.error("❌ Error during scan:", error.message);
+        console.error("❌ Fatal Error:", error);
     }
 }
 
