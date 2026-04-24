@@ -1,10 +1,10 @@
 const { ethers } = require("ethers");
 const axios = require("axios");
 
-// 1. Updated Configuration - Listening to BOTH possible addresses
+// 1. Setup
 const ACTIVE_ADDRESSES = [
-    "0xb476a6a53Ba32c4B74BbdACaD567EBe1B3D50f09", // Old Router
-    "0xFa6419a3d3503a016dF3A59F690734862CA2A78D"  // New Active Contract
+    "0xb476a6a53Ba32c4B74BbdACaD567EBe1B3D50f09",
+    "0xFa6419a3d3503a016dF3A59F690734862CA2A78D"
 ];
 
 const RPC_URL = process.env.RPC_URL;
@@ -19,31 +19,32 @@ const TOKENS = {
 };
 
 async function monitor() {
-    console.log("🛰️ Initializing Universal Stabilizer Monitor...");
+    console.log("🛰️ Initializing Alchemy-Safe Monitor...");
     const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
     
     try {
         const latestBlock = await provider.getBlockNumber();
-        const startBlock = latestBlock - 60; 
-
-        // Swap Event Topic
-        const swapTopic = ethers.utils.id("Swap(address,address,address,uint256,uint256)");
         
-        // Loop through all possible contract addresses
+        // --- CRITICAL FIX: Alchemy Free Tier limit is 10 blocks ---
+        const startBlock = latestBlock - 9; 
+
+        console.log(`🔎 Scanning blocks ${startBlock} to ${latestBlock} (10 block limit)...`);
+
+        const swapTopic = ethers.utils.id("Swap(address,address,address,uint256,uint256)");
+        const iface = new ethers.utils.Interface([
+            "event Swap(address indexed user, address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut)"
+        ]);
+
         for (const contractAddr of ACTIVE_ADDRESSES) {
             const filter = {
                 address: contractAddr,
-                fromBlock: startBlock,
-                toBlock: latestBlock,
+                fromBlock: ethers.utils.hexlify(startBlock), // Use hex for safer RPC calls
+                toBlock: ethers.utils.hexlify(latestBlock),
                 topics: [swapTopic]
             };
 
             const logs = await provider.getLogs(filter);
-            console.log(`🔎 Checking ${contractAddr.slice(0,6)}... Found: ${logs.length} swaps.`);
-
-            const iface = new ethers.utils.Interface([
-                "event Swap(address indexed user, address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut)"
-            ]);
+            console.log(`📡 Contract ${contractAddr.slice(0,6)}: Found ${logs.length} swaps.`);
 
             for (const log of logs) {
                 const parsed = iface.parseLog(log);
@@ -61,8 +62,7 @@ async function monitor() {
                             color: 0x00ffcc,
                             description: `**${amount.toLocaleString()} ${tokenData.symbol}** ➔ **${tokenOutName}**`,
                             fields: [
-                                { name: "Contract", value: `[${contractAddr.slice(0,10)}...](https://sepolia.etherscan.io/address/${contractAddr})`, inline: true },
-                                { name: "Tx Link", value: `[Etherscan](https://sepolia.etherscan.io/tx/${log.transactionHash})`, inline: true }
+                                { name: "Tx Link", value: `[Etherscan](https://sepolia.etherscan.io/tx/${log.transactionHash})` }
                             ],
                             timestamp: new Date()
                         }]
@@ -70,9 +70,11 @@ async function monitor() {
                 }
             }
         }
-        console.log("✅ Universal scan complete.");
+        console.log("✅ Alchemy-safe scan complete.");
     } catch (error) {
+        // Detailed logging to catch any other tier restrictions
         console.error("❌ RPC Error:", error.message);
+        if (error.body) console.error("Error Body:", JSON.parse(error.body).error.message);
     }
 }
 
