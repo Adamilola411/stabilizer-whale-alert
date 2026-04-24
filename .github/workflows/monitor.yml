@@ -1,0 +1,20 @@
+name: Stabilizer 5-Min Monitor
+
+on:
+  schedule:
+    - cron: '*/5 * * * *' # Runs exactly every 5 minutes
+  workflow_dispatch: # Allows manual start
+
+jobs:
+  check-swaps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install ethers@5.7.2 axios
+      - run: node stabilizer-monitor.js
+        env:
+          RPC_URL: ${{ secrets.RPC_URL }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
