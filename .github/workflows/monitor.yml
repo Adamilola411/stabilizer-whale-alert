@@ -1,15 +1,16 @@
-name: Stabilizer 5-Min Whale Monitor (Offset)
+name: Stabilizer 2-Min Alchemy-Safe Monitor
 
 on:
   schedule:
-    # Runs every 5 minutes at the 2, 7, 12, 17... marks to avoid peak traffic
-    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
-  workflow_dispatch: # Keeps the manual "Run" button active for testing
+    # Runs every 2 minutes to match the 10-block scan range
+    - cron: "*/2 * * * *"
+  workflow_dispatch: # Allows you to trigger it manually for testing
 
 jobs:
   check-swaps:
     runs-on: ubuntu-latest
-    # Prevents overlapping runs if the blockchain is slow
+    
+    # Prevents overlapping runs if GitHub or the RPC is slow
     concurrency: 
       group: stabilizer-monitor
       cancel-in-progress: true
