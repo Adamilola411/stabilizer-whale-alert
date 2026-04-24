@@ -1,20 +1,33 @@
-name: Stabilizer 5-Min Monitor
+name: Stabilizer 5-Min Whale Monitor (Offset)
 
 on:
   schedule:
-    - cron: '*/5 * * * *' # Runs exactly every 5 minutes
-  workflow_dispatch: # Allows manual start
+    # Runs every 5 minutes at the 2, 7, 12, 17... marks to avoid peak traffic
+    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
+  workflow_dispatch: # Keeps the manual "Run" button active for testing
 
 jobs:
   check-swaps:
     runs-on: ubuntu-latest
+    # Prevents overlapping runs if the blockchain is slow
+    concurrency: 
+      group: stabilizer-monitor
+      cancel-in-progress: true
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install ethers@5.7.2 axios
-      - run: node stabilizer-monitor.js
+
+      - name: Install Dependencies
+        run: npm install ethers@5.7.2 axios
+
+      - name: Run Whale Monitor
+        run: node stabilizer-monitor.js
         env:
           RPC_URL: ${{ secrets.RPC_URL }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
