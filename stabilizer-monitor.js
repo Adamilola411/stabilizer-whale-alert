@@ -11,17 +11,17 @@ const RPC_URL = process.env.RPC_URL;
 const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
 
 async function monitor() {
-    console.log("🛰️ Robust Deep-Scan Starting...");
+    console.log("🛰️ Initializing 10-Block Precision Monitor...");
     const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
     
     try {
         const latestBlock = await provider.getBlockNumber();
         
-        // Increase range to 15 blocks to catch lag (Overlap)
-        // If Alchemy errors with '400', change 14 back to 9
-        const startBlock = latestBlock - 14; 
+        // We use 9 because (Latest - 9) to Latest = exactly 10 blocks total.
+        // Example: 100 to 109 is 10 blocks.
+        const startBlock = latestBlock - 9; 
 
-        console.log(`🔎 Range: ${startBlock} to ${latestBlock} (${latestBlock - startBlock + 1} blocks)`);
+        console.log(`🔎 Range: ${startBlock} to ${latestBlock} (Alchemy Limit Compliance)`);
 
         for (const contractAddr of ACTIVE_ADDRESSES) {
             const filter = {
@@ -33,28 +33,34 @@ async function monitor() {
             const logs = await provider.getLogs(filter);
             
             if (logs.length > 0) {
-                console.log(`🔥 Found ${logs.length} events on ${contractAddr.slice(0,6)}`);
+                console.log(`🔥 SUCCESS: Found ${logs.length} events on ${contractAddr.slice(0,6)}`);
                 
                 for (const log of logs) {
-                    // Send notification
                     await axios.post(DISCORD_WEBHOOK, {
                         embeds: [{
                             title: "🐋 STABILIZER ACTIVITY DETECTED",
                             color: 0x00ffcc,
-                            description: `New activity found on contract \`${contractAddr}\``,
+                            description: `Activity detected on monitored contract.`,
                             fields: [
-                                { name: "Transaction Link", value: `[View on Etherscan](https://sepolia.etherscan.io/tx/${log.transactionHash})` }
+                                { name: "Contract", value: `\`${contractAddr}\`` },
+                                { name: "Explorer", value: `[View Transaction](https://sepolia.etherscan.io/tx/${log.transactionHash})` }
                             ],
-                            footer: { text: `Block: ${log.blockNumber}` },
+                            footer: { text: `Block: ${log.blockNumber} | Alchemy Free Tier` },
                             timestamp: new Date()
                         }]
                     });
                 }
             }
         }
-        console.log("✅ Scan complete.");
+        console.log("✅ Scan complete. No tier violations.");
     } catch (error) {
-        console.error("❌ Error:", error.message);
+        // Detailed logging to see exactly what Alchemy dislikes
+        if (error.body) {
+            const errorData = JSON.parse(error.body);
+            console.error("❌ Alchemy Error:", errorData.error.message);
+        } else {
+            console.error("❌ Script Error:", error.message);
+        }
     }
 }
 
