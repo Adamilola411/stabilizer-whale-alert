@@ -1,28 +1,29 @@
 const { ethers } = require("ethers");
 const axios = require("axios");
 
-// ADD ALL POSSIBLE ADDRESSES HERE
 const ACTIVE_ADDRESSES = [
     "0xb476a6a53Ba32c4B74BbdACaD567EBe1B3D50f09",
     "0xFa6419a3d3503a016dF3A59F690734862CA2A78D",
-    "0x3dd1A7A99CFa2554Da8b3483e6eD739120Fc35cB" // Added a common pool address
+    "0x3dd1A7A99CFa2554Da8b3483e6eD739120Fc35cB"
 ];
 
 const RPC_URL = process.env.RPC_URL;
 const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
 
 async function monitor() {
-    console.log("🛰️ Deep-Scan Monitor Starting...");
+    console.log("🛰️ Robust Deep-Scan Starting...");
     const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
     
     try {
         const latestBlock = await provider.getBlockNumber();
-        const startBlock = latestBlock - 9; 
+        
+        // Increase range to 15 blocks to catch lag (Overlap)
+        // If Alchemy errors with '400', change 14 back to 9
+        const startBlock = latestBlock - 14; 
 
-        console.log(`🔎 Scanning Blocks: ${startBlock} to ${latestBlock}`);
+        console.log(`🔎 Range: ${startBlock} to ${latestBlock} (${latestBlock - startBlock + 1} blocks)`);
 
         for (const contractAddr of ACTIVE_ADDRESSES) {
-            // We remove the topics filter entirely to see IF the contract is even breathing
             const filter = {
                 address: contractAddr,
                 fromBlock: ethers.utils.hexlify(startBlock),
@@ -32,15 +33,23 @@ async function monitor() {
             const logs = await provider.getLogs(filter);
             
             if (logs.length > 0) {
-                console.log(`🔥 ACTIVITY DETECTED on ${contractAddr}! Found ${logs.length} events.`);
+                console.log(`🔥 Found ${logs.length} events on ${contractAddr.slice(0,6)}`);
                 
                 for (const log of logs) {
+                    // Send notification
                     await axios.post(DISCORD_WEBHOOK, {
-                        content: `📢 **Stabilizer Activity Detected!**\nContract: \`${contractAddr}\`\nTx: https://sepolia.etherscan.io/tx/${log.transactionHash}`
+                        embeds: [{
+                            title: "🐋 STABILIZER ACTIVITY DETECTED",
+                            color: 0x00ffcc,
+                            description: `New activity found on contract \`${contractAddr}\``,
+                            fields: [
+                                { name: "Transaction Link", value: `[View on Etherscan](https://sepolia.etherscan.io/tx/${log.transactionHash})` }
+                            ],
+                            footer: { text: `Block: ${log.blockNumber}` },
+                            timestamp: new Date()
+                        }]
                     });
                 }
-            } else {
-                console.log(`info: No events for ${contractAddr.slice(0,6)}`);
             }
         }
         console.log("✅ Scan complete.");
